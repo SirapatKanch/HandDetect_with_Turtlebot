@@ -3,6 +3,7 @@ import rospy
 import cv2
 import numpy as np
 from sensor_msgs.msg import Image,PointCloud
+from std_msgs.msg import Float32MultiArray
 from cv_bridge import CvBridge
 import os
 import rospkg
@@ -71,12 +72,24 @@ class ObjectDetection(object):
                     print(label)
                     if label=='person':
                     	#color = colors[i]
+                    	self.publish_center_coor(x,y,w,h)
                     	cv2.rectangle(frame, (x,y), (x+w, y+h), color, 2)
                     	cv2.putText(frame, label, (x, y - 5), font, 1, color, 1)
             cv2.imshow("Image", frame)
             key = cv2.waitKey(1)
             if key == 27:
                 break
+                
+    def publish_center_coor(self, x, y, w, h):
+        x_coor_center = x+(w/2)
+        y_coor_center = y+(h/2)
+        center_coor = Float32MultiArray(data=[x_coor_center,y_coor_center])
+        publish = rospy.Publisher('CenterCoor',Float32MultiArray,queue_size=10)
+        rate = rospy.Rate(10)
+        rospy.loginfo(center_coor)
+        publish.publish(center_coor)
+        rate.sleep()
+	    
 #colors = [[230.03560855 46.53242328  80.01571526]]
 if __name__ == "__main__":
     obj = ObjectDetection()
