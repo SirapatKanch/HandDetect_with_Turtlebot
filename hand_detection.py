@@ -6,6 +6,7 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import os
 import rospkg
+from yolo_hand_detection.srv import Hand_Coor , Hand_CoorResponse
 
 path = rospkg.RosPack().get_path("yolo_hand_detection")
 
@@ -30,9 +31,7 @@ class ObjectDetection(object):
             print(f"class = {classes}") 
 
         output_layers = [layer_name for layer_name in net.getUnconnectedOutLayersNames()]
-        #colors = np.random.uniform(0, 255, size=(len(classes), 3))
         color = [162,0,37]
-        #print(f"colors = {colors}")
         while not rospy.is_shutdown():
             frame = self.image
             height, width, channels = frame.shape
@@ -42,10 +41,9 @@ class ObjectDetection(object):
             boxes = []
             confs = []
             class_ids = []
+            font = cv2.FONT_HERSHEY_PLAIN
             for output in outputs:
-            	#print(f"output = {output}")
             	for detect in output:
-                    #print(f"detect = {detect}")
                     scores = detect[5:]
                     class_id = np.argmax(scores)
                     conf = scores[class_id]
@@ -59,20 +57,32 @@ class ObjectDetection(object):
                         boxes.append([x, y, w, h])
                         confs.append(float(conf))
                         class_ids.append(class_id)
-            indexes = cv2.dnn.NMSBoxes(boxes, confs, 0.5, 0.4)
-            #print(f"index = {indexes}")
-            font = cv2.FONT_HERSHEY_PLAIN
+                        indexes = cv2.dnn.NMSBoxes(boxes, confs, 0.5, 0.4)
+                        x, y, w, h = boxes[0]
+                        self.find_center(x, y, w, h)
+                        label = str(classes[class_ids[0]])
+                        cv2.rectangle(frame, (x,y), (x+w, y+h), color, 2)
+                        cv2.putText(frame, label, (x, y - 5), font, 1, color, 1)
+                        cv2.imshow("Image", frame)
+                        key = cv2.waitKey(1)
+                        if key == 27:
+                            break
+    def find_center(self,x,y,w,h):
+        rospy.wait_for_service('hand_coor')
+        try:
+            coor = rospy.ServiceProxy('hand_coor', Hand_Coor)
+            resp1 = coor(x,y,w,h)
+            print(resp1)
+        except rospy.ServiceException as e:
+            print("Service call failed: %s"%e)
+            '''
             for i in range(len(boxes)):
                 if i in indexes:
                     x, y, w, h = boxes[i]
                     label = str(classes[class_ids[i]])
-                    #color = colors[0]
                     cv2.rectangle(frame, (x,y), (x+w, y+h), color, 2)
                     cv2.putText(frame, label, (x, y - 5), font, 1, color, 1)
-            cv2.imshow("Image", frame)
-            key = cv2.waitKey(1)
-            if key == 27:
-                break
+            '''
 
 if __name__ == "__main__":
     obj = ObjectDetection()
