@@ -10,10 +10,13 @@ from actionlib_msgs.msg import *
 #from std_srvs.srv import *
 #from your_smach.srv import GoToPosition, GoToPositionRequest
 # from ../../demo_yolo.object_detection import ObjectDetection
-from your_smach.srv import Hand_Coor , Hand_CoorResponse , Depth_Hand , Depth_HandResponse
-from lib.demo_yolo.spin import Spin_Base
+from your_smach.srv import Hand_Coor , Hand_CoorResponse , Depth_Hand , Depth_HandResponse , Location , LocationResponse
+#from lib.demo_yolo.spin import Spin_Base
 from lib.demo_yolo.object_detection import ObjectDetection
 from lib.yolo_hand_detection.hand_detection import HandDetection
+import actionlib
+from actionlib_msgs.msg import *
+from move_base_msgs.msg import MoveBaseAction, MoveBaseGoal
 
 class FindPerson(smach.State):
     def __init__(self,
@@ -55,7 +58,7 @@ class FindDepth(smach.State):
     def __init__(self, outcomes=['success', 'fail'],
                 input_keys=['hand_coor_x','hand_coor_y'],
                 output_keys=['depth']):
-        super().__init__(outcomes,input_keys)
+        super().__init__(outcomes,input_keys,output_keys)
     
     def execute(self, ud):
         rospy.loginfo("Executing state FindDepth")
@@ -69,7 +72,7 @@ class FindDepth(smach.State):
 
 class Navigate(smach.State):
     def __init__(self, outcomes=['success', 'fail'],input_keys=['depth']):
-        super().__init__(outcomes)
+        super().__init__(outcomes,input_keys)
     
     def execute(self, ud):
         rospy.loginfo("Executing state Navigation")
@@ -99,13 +102,13 @@ class RobotState(object):
                                 remapping={'hand_coor_x_in':'sm_data_x','hand_coor_y_in':'sm_data_y','hand_coor_x':'sm_data_x','hand_coor_y':'sm_data_y'})
 
             smach.StateMachine.add('FindDepth', FindDepth(), 
-                               transitions={'success':'Navigation', 'fail':'FindDepth'},
+                               transitions={'success':'Navigate', 'fail':'FindDepth'},
                                remapping={'hand_coor_x':'sm_data_x',
                                             'hand_coor_y':'sm_data_y',
                                             'depth':'sm_data_x'})
 
-            smach.StateMachine.add('Navigation', DoSth(), 
-                               transitions={'success':'FindPerson', 'fail':'Navigation'},
+            smach.StateMachine.add('Navigate', Navigate(), 
+                               transitions={'success':'FindPerson', 'fail':'Navigate'},
                                remapping={'depth':'sm_data_x'})
             
         outcome = sm.execute()
@@ -133,14 +136,13 @@ class RobotState(object):
         self.depth_cv = np.array(bridge.imgmsg_to_cv2(data,desired_encoding='passthrough')) 
         print(self.depth_cv)
 
-    def go_to_location(self):
+    def go_to_location(self,req):
         move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
-        rospy.loginfo("wait for the action server to come up")
         move_base.wait_for_server(rospy.Duration(5))
         goal = MoveBaseGoal()
         goal.target_pose.header.frame_id = 'base_footprint'
         goal.target_pose.header.stamp = rospy.Time.now()
-        goal.target_pose.pose.position.x = self.distance #3 meters
+        goal.target_pose.pose.position.x = req.distance #3 meters
         goal.target_pose.pose.orientation.w = 1.0 #go forward
         #start moving
         move_base.send_goal(goal)
@@ -148,7 +150,7 @@ class RobotState(object):
         success = move_base.wait_for_result(rospy.Duration(60))
         if not success:
             move_base.cancel_goal()
-            rospy.loginfo("The base failed to move forward %s meters for some reason",self.a)
+            rospy.loginfo("The base failed to move forward %s meters for some reason",req.distance)
         else:
             # We made it!
             state = move_base.get_state()
