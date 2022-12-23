@@ -6,6 +6,7 @@ import smach_ros
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 import numpy as np
+from actionlib_msgs.msg import *
 #from std_srvs.srv import *
 #from your_smach.srv import GoToPosition, GoToPositionRequest
 # from ../../demo_yolo.object_detection import ObjectDetection
@@ -52,8 +53,8 @@ class FindHand(smach.State):
 
 class FindDepth(smach.State):
     def __init__(self, outcomes=['success', 'fail'],
-                input_keys=['hand_coor_x','hand_coor_y'],depth=0):
-                #output_keys=['depth']):
+                input_keys=['hand_coor_x','hand_coor_y'],
+                output_keys=['depth']):
         super().__init__(outcomes,input_keys)
     
     def execute(self, ud):
@@ -63,25 +64,26 @@ class FindDepth(smach.State):
         client = rospy.ServiceProxy('depth_hand', Depth_Hand)
         center = client(ud.hand_coor_x,ud.hand_coor_y)
         print(f"Depth = {center}")
+        ud.depth = center.depth
         return 'success'
-'''
+
 class Navigate(smach.State):
-    def __init__(self, outcomes=['success', 'fail']):
+    def __init__(self, outcomes=['success', 'fail'],input_keys=['depth']):
         super().__init__(outcomes)
-        self.gotopos = rospy.ServiceProxy('robot/naigation', GoToPosition)
     
     def execute(self, ud):
         rospy.loginfo("Executing state Navigation")
-        req = GoToPositionRequest()
-        req.position_name = 'home'
-        self.gotopos(req)
+        client = rospy.ServiceProxy('robot_following', Location)
+        move = client(ud.depth-0.25) #recieve depth from image
+        #move = client(1-0.25) #input depth
         return 'success'
-'''
+
 class RobotState(object):
     def __init__(self) -> None:
         rospy.init_node('robot_state', anonymous=True)
         rospy.Service('hand_coor', Hand_Coor, self.hand_server_callback)
         rospy.Service('depth_hand', Depth_Hand, self.depth_server_callback)
+        rospy.Service('robot_following', Location, self.go_to_location)
         sm = smach.StateMachine(outcomes=['---finish---'])
         sm.userdata.sm_data_x = 0
         sm.userdata.sm_data_y = 0
@@ -97,13 +99,14 @@ class RobotState(object):
                                 remapping={'hand_coor_x_in':'sm_data_x','hand_coor_y_in':'sm_data_y','hand_coor_x':'sm_data_x','hand_coor_y':'sm_data_y'})
 
             smach.StateMachine.add('FindDepth', FindDepth(), 
-                               transitions={'success':'---finish---', 'fail':'FindDepth'},
+                               transitions={'success':'Navigation', 'fail':'FindDepth'},
                                remapping={'hand_coor_x':'sm_data_x',
-                                            'hand_coor_y':'sm_data_y'})
-                                            #'depth':'sm_data_x'})
+                                            'hand_coor_y':'sm_data_y',
+                                            'depth':'sm_data_x'})
 
-            '''smach.StateMachine.add('Navigation', DoSth(), 
-                               transitions={'success':'FindPerson', 'fail':'Navigation'})'''
+            smach.StateMachine.add('Navigation', DoSth(), 
+                               transitions={'success':'FindPerson', 'fail':'Navigation'},
+                               remapping={'depth':'sm_data_x'})
             
         outcome = sm.execute()
 
@@ -130,6 +133,32 @@ class RobotState(object):
         self.depth_cv = np.array(bridge.imgmsg_to_cv2(data,desired_encoding='passthrough')) 
         print(self.depth_cv)
 
+    def go_to_location(self):
+        move_base = actionlib.SimpleActionClient("move_base", MoveBaseAction)
+        rospy.loginfo("wait for the action server to come up")
+        move_base.wait_for_server(rospy.Duration(5))
+        goal = MoveBaseGoal()
+        goal.target_pose.header.frame_id = 'base_footprint'
+        goal.target_pose.header.stamp = rospy.Time.now()
+        goal.target_pose.pose.position.x = self.distance #3 meters
+        goal.target_pose.pose.orientation.w = 1.0 #go forward
+        #start moving
+        move_base.send_goal(goal)
+        #allow TurtleBot up to 60 seconds to complete task
+        success = move_base.wait_for_result(rospy.Duration(60))
+        if not success:
+            move_base.cancel_goal()
+            rospy.loginfo("The base failed to move forward %s meters for some reason",self.a)
+        else:
+            # We made it!
+            state = move_base.get_state()
+            if state == GoalStatus.SUCCEEDED:
+                rospy.loginfo("The base moved 3 meters forward")
+    
+    def shutdown(self):
+        stop_goal = MoveBaseGoal()
+        self.move_base.send_goal(stop_goal)
+        rospy.loginfo("Stop")
 
 if __name__ == "__main__":
     RobotState()
