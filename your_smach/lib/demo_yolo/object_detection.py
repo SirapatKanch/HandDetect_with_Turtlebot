@@ -20,8 +20,8 @@ class ObjectDetection(object):
     def __init__(self):
         self.bridge = CvBridge()
         #rospy.init_node("object_detect", anonymous=True)
-        rospy.Subscriber("/camera/rgb/image_color", Image, self.update_frame_callback)
-        rospy.wait_for_message("/camera/rgb/image_color", Image)
+        rospy.Subscriber("/camera/rgb/image_raw", Image, self.update_frame_callback)
+        rospy.wait_for_message("/camera/rgb/image_raw", Image)
         #rospy.Subscriber("/camera/depth_registed/image", PointCloud, self.update_frame_depth_callback)
         #rospy.wait_for_message("/camera/depth_registered/image", PointCloud)
         self.rate = rospy.Rate(10)
