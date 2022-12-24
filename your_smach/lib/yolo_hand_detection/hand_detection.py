@@ -18,8 +18,8 @@ class HandDetection(object):
     def __init__(self):
         self.bridge = CvBridge()
         #rospy.init_node("object_detect", anonymous=True)
-        rospy.Subscriber("/camera/rgb/image_color", Image, self.update_frame_callback)
-        rospy.wait_for_message("/camera/rgb/image_color", Image)
+        rospy.Subscriber("/camera/rgb/image_raw", Image, self.update_frame_callback)
+        rospy.wait_for_message("/camera/rgb/image_raw", Image)
         self.rate = rospy.Rate(10)
     def update_frame_callback(self, data):
         self.image = self.bridge.imgmsg_to_cv2(data, desired_encoding="bgr8") 
