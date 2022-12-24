@@ -77,8 +77,8 @@ class Navigate(smach.State):
     def execute(self, ud):
         rospy.loginfo("Executing state Navigation")
         client = rospy.ServiceProxy('robot_following', Location)
-        move = client(ud.depth-0.25) #recieve depth from image
-        #move = client(1-0.25) #input depth
+        #move = client(ud.depth-0.25) #recieve depth from image
+        move = client(1-0.25) #input depth
         return 'success'
 
 class RobotState(object):
@@ -124,8 +124,8 @@ class RobotState(object):
 
         self.x = int(req.x)
         self.y = int(req.y)
-        rospy.Subscriber("/camera/depth/image_rect_raw'", Image, self.update_frame_callback)
-        rospy.wait_for_message("/camera/depth/image_rect_raw", Image)
+        rospy.Subscriber("/camera/depth/image_raw", Image, self.update_frame_callback)
+        rospy.wait_for_message("/camera/depth/image_raw", Image)
 
         self.depth = self.depth_cv[self.x][self.y]
         print(self.depth)
@@ -133,6 +133,7 @@ class RobotState(object):
         return Depth_HandResponse(self.depth)
 
     def update_frame_callback(self, data):
+        bridge = CvBridge()
         self.depth_cv = np.array(bridge.imgmsg_to_cv2(data,desired_encoding='passthrough')) 
         print(self.depth_cv)
 
